@@ -1,4 +1,5 @@
 Motion Estimation - Mono Sequences
+
 Acest proiect si propune sa analizeze comportamentul dinamic al unor obiecte aflate in miscare relative fata de unele fixe, cu ajutorul retelelor neuronale vom identifica aceste obiecte fixe
 
 
