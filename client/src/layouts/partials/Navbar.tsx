@@ -17,11 +17,9 @@ const Navbar = () => {
 				sx={{
 					display: 'flex',
 					width: '100%',
-					justifySelf: 'center',
-					height: isHome ? '100%' : 'fit-content',
+					height: '80vh',
 					flexDirection: isHome ? 'column' : 'row',
 					alignItems: isHome ? 'center' : 'flex-start',
-					border: '1px solid red',
 					justifyContent: 'center',
 					gap: 4,
 					mt: 1,
@@ -36,7 +34,6 @@ const Navbar = () => {
 					<Box
 						sx={{
 							position: 'relative',
-							top: '50px',
 						}}
 					>
 						<img

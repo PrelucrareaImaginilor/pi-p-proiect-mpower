@@ -14,10 +14,10 @@ const MainLayout: FC<Props> = ({ children }) => {
 					display: 'flex',
 					flexDirection: 'column',
 					mx: 'auto',
-					minHeight: '100vh',
+					minHeight: '95vh',
+					alignItems: 'center',
 					maxHeight: 'fit-content',
 					border: '1px solid red',
-					alignItems: 'center',
 					width: '70%',
 					maxWidth: '100%',
 				}}
@@ -55,6 +55,7 @@ const MainLayout: FC<Props> = ({ children }) => {
 				>
 					powered by opencv
 				</Stack>
+
 				<Navbar />
 
 				<Outlet />
