@@ -2,6 +2,8 @@ import { Box, Stack, Typography } from '@mui/material'
 import React, { FC } from 'react'
 import Navbar from './partials/Navbar'
 import { Outlet } from 'react-router-dom'
+import Background from './../assets/nice-grid-pattern.png'
+
 interface Props {
 	children: React.ReactNode
 }
@@ -13,51 +15,58 @@ const MainLayout: FC<Props> = ({ children }) => {
 				sx={{
 					display: 'flex',
 					flexDirection: 'column',
-					mx: 'auto',
-					minHeight: '95vh',
 					alignItems: 'center',
-					maxHeight: 'fit-content',
-					border: '1px solid red',
-					width: '70%',
-					maxWidth: '100%',
+					// border: '1px solid red',
+					minHeight: '100svh',
+					width: '100svw',
+					background: `url(${Background}), #110F32`,
+					justifyContent: 'center',
+					backgroundPosition: 'center',
+					backgroundSize: 'cover'
 				}}
 			>
 				<Stack
 					sx={{
-						flexDirection: 'row',
+						flexDirection: 'column',
 						justifyContent: 'center',
-						mx: 'auto',
-						height: 'fit-content',
 						flexWrap: 'nowrap',
 						wordBreak: 'none',
-						width: '90%',
 						textAlign: 'center',
+						position: 'fixed',
+						top: '0'
 					}}
 				>
 					<Typography
-						variant='h1'
 						sx={{
-							fontSize: '3rem',
-							mt: 1,
+							fontSize: '2.5rem',
+							color: '#FFF'
 							// wordBreak: 'break-word',
-							width: 'fit-content',
-							border: '1px solid red',
 						}}
 					>
 						Police Radar
 					</Typography>
-				</Stack>
-				<Stack
+					<Typography
 					sx={{
-						width: 'fit-content',
-						fontSize: '.5rem',
+						fontSize: '1rem',
+						color: '#4B3FD7',
+						background: '#FFF',
+						borderRadius: '6px'
 					}}
 				>
-					powered by opencv
+					Powered by OpenCV
+				</Typography>
 				</Stack>
-
+					
 				<Navbar />
-
+				<Stack
+					sx={{
+						background: 'red',
+						height: '100%',
+						width: '100%'
+					}}
+				>
+					{children}
+				</Stack>
 				<Outlet />
 			</Box>
 		</>
