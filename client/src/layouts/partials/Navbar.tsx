@@ -20,6 +20,7 @@ const Navbar = () => {
 					alignItems: isHome ? 'center' : 'flex-start',
 					justifyContent: 'center',
 					gap: 2,
+					width: 'max-content',
 				}}
 			>
 				<NavLink to={'/legend'} text={'Legend'} />

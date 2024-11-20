@@ -33,7 +33,8 @@ const MainLayout: FC<Props> = ({ children }) => {
 						wordBreak: 'none',
 						textAlign: 'center',
 						position: 'fixed',
-						top: '0'
+						top: '0',
+						width: 'max-content'
 					}}
 				>
 					<Typography
@@ -60,7 +61,6 @@ const MainLayout: FC<Props> = ({ children }) => {
 				<Navbar />
 				<Stack
 					sx={{
-						background: 'red',
 						height: '100%',
 						width: '100%'
 					}}
