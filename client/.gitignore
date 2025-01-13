@@ -22,3 +22,11 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# YOLO files
+*.weights
+*.cfg
+yolov4.weights
+yolov4.cfg
+models/
+backend/models/

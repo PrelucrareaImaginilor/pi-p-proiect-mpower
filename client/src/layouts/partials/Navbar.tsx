@@ -16,14 +16,11 @@ const Navbar = () => {
 			<Box
 				sx={{
 					display: 'flex',
-					width: '100%',
-					height: '80vh',
 					flexDirection: isHome ? 'column' : 'row',
 					alignItems: isHome ? 'center' : 'flex-start',
 					justifyContent: 'center',
-					gap: 4,
-					mt: 1,
-					mb: 2,
+					gap: 2,
+					width: 'max-content',
 				}}
 			>
 				<NavLink to={'/legend'} text={'Legend'} />
@@ -36,11 +33,11 @@ const Navbar = () => {
 							position: 'relative',
 						}}
 					>
-						<img
+						{/* <img
 							src='https://media1.tenor.com/m/wNnalIwS0ygAAAAd/polis-police.gif'
 							alt='Police GIF'
 							style={{ width: '200px', height: 'auto' }}
-						/>
+						/> */}
 					</Box>
 				)}
 			</Box>

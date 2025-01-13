@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+
+# YOLO Model Files
+backend/models/
+backend/models/*.weights
+backend/models/*.cfg
+backend/models/*.names
+
+# Video Processing
+backend/input/
+backend/output/
+*.mp4
+*.avi
+*.mov
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Project specific
+backend/logs/
+*.log

@@ -5,6 +5,7 @@ import Legend from './pages/legend/Legend'
 import MainLayout from './layouts/MainLayout'
 import VideoPage from './pages/video/videoPage'
 import Doc from './pages/doc/Doc'
+import './App.css'
 
 function App() {
 	return (
