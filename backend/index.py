@@ -10,22 +10,17 @@ import json
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
 
-# Enable OpenCV optimizations and set a reasonable thread count
 cv.setUseOptimized(True)
 try:
     cv.setNumThreads(max(1, os.cpu_count() - 1))
 except Exception:
-    # Some OpenCV builds/platforms may not support thread control
     pass
 
-# ---------------- Generic Video Stabilization Only -----------------
-# Configuration defaults (can be overridden per request via query params)
 DEFAULT_SMOOTH_WINDOW = 10      # moving average length over cumulative transforms
 MAX_FEATURES = 500
 QUALITY_LEVEL = 0.01
 MIN_DISTANCE = 20
 DEFAULT_CROP = 0.04             # 4% border crop to hide warping edges
-# New defaults
 DEFAULT_OVERLAY = False
 
 
@@ -45,7 +40,6 @@ def estimate_affine(prev_gray, gray):
     good1 = pts1[st == 1]
     if len(good0) < 8:
         return None, None, None, None
-    # Reduce RANSAC iterations for faster estimation while keeping robustness
     M, inliers = cv.estimateAffinePartial2D(
         good0, good1,
                 method=cv.RANSAC,
@@ -53,6 +47,67 @@ def estimate_affine(prev_gray, gray):
         maxIters=100
     )
     return M, good0, good1, inliers
+
+
+def estimate_homography(prev_gray, gray, ratio_thresh=0.75):
+    orb = cv.ORB_create(nfeatures=MAX_FEATURES)
+    kp1, des1 = orb.detectAndCompute(prev_gray, None)
+    kp2, des2 = orb.detectAndCompute(gray, None)
+    
+    if des1 is None or des2 is None or len(des1) < 8 or len(des2) < 8:
+        return None, None, None
+    
+    bf = cv.BFMatcher(cv.NORM_HAMMING, crossCheck=False)
+    matches = bf.knnMatch(des1, des2, k=2)
+    
+    good_matches = []
+    for m, n in matches:
+        if m.distance < ratio_thresh * n.distance:
+            good_matches.append(m)
+    
+    if len(good_matches) < 8:
+        return None, None, None
+    
+    pts1 = np.float32([kp1[m.queryIdx].pt for m in good_matches])
+    pts2 = np.float32([kp2[m.trainIdx].pt for m in good_matches])
+    
+    H, mask = cv.findHomography(pts1, pts2, cv.RANSAC, 5.0)
+    
+    if H is None:
+        return None, None, None
+    
+    dx = H[0, 2] / H[2, 2] if H[2, 2] != 0 else 0
+    dy = H[1, 2] / H[2, 2] if H[2, 2] != 0 else 0
+    da = math.atan2(H[1, 0], H[0, 0])
+    
+    return H, pts1[mask.ravel()==1], pts2[mask.ravel()==1]
+
+
+def smooth_trajectory(trajectory, radius):
+    if len(trajectory) < radius:
+        return trajectory
+    
+    smoothed = []
+    kernel = cv.getGaussianKernel(2*radius+1, -1).flatten()
+    
+    for i in range(len(trajectory)):
+        start = max(0, i - radius)
+        end = min(len(trajectory), i + radius + 1)
+        window = trajectory[start:end]
+        weights = kernel[radius - (i - start): radius + (end - i)]
+        weights = weights / np.sum(weights)
+        
+        smoothed_dx = np.sum([w * t['dx'] for w, t in zip(weights, window)])
+        smoothed_dy = np.sum([w * t['dy'] for w, t in zip(weights, window)])
+        smoothed_da = np.sum([w * t['da'] for w, t in zip(weights, window)])
+        
+        smoothed.append({
+            'dx': smoothed_dx,
+            'dy': smoothed_dy,
+            'da': smoothed_da
+        })
+    
+    return smoothed
 
 
 def stabilize_stream(cap, out, smooth_window=DEFAULT_SMOOTH_WINDOW, crop_ratio=DEFAULT_CROP, collect_transforms=False,
@@ -63,7 +118,6 @@ def stabilize_stream(cap, out, smooth_window=DEFAULT_SMOOTH_WINDOW, crop_ratio=D
     smooth_buf_dx = deque(maxlen=smooth_window)
     smooth_buf_dy = deque(maxlen=smooth_window)
     smooth_buf_da = deque(maxlen=smooth_window)
-    # Running sums for O(1) moving averages
     sum_dx = 0.0
     sum_dy = 0.0
     sum_da = 0.0
@@ -74,7 +128,6 @@ def stabilize_stream(cap, out, smooth_window=DEFAULT_SMOOTH_WINDOW, crop_ratio=D
     cum_dx = cum_dy = cum_da = 0.0
     
     frame_index = 0
-    # Pre-compute frame dimensions and crop indices once
     w = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
     h = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
     do_crop = crop_ratio > 0.0
@@ -102,19 +155,16 @@ def stabilize_stream(cap, out, smooth_window=DEFAULT_SMOOTH_WINDOW, crop_ratio=D
             continue
         
         gray_full = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
-        # Optionally downscale for faster motion estimation
         if 0.25 <= scale < 1.0:
             gray = cv.resize(gray_full, (int(w*scale), int(h*scale)), interpolation=cv.INTER_AREA)
             prev_for_est = cv.resize(prev_gray, (int(w*scale), int(h*scale)), interpolation=cv.INTER_AREA)
         else:
             gray = gray_full
             prev_for_est = prev_gray
-        # Compute affine once per frame
         M, good0, good1, inliers = estimate_affine(prev_for_est, gray)
         if M is None:
             stabilized = frame  # fallback
             if collect_transforms:
-                # reuse last smoothed if available
                 if len(smooth_buf_dx) > 0:
                     sdx = sum_dx / len(smooth_buf_dx)
                     sdy = sum_dy / len(smooth_buf_dy)
@@ -126,12 +176,10 @@ def stabilize_stream(cap, out, smooth_window=DEFAULT_SMOOTH_WINDOW, crop_ratio=D
                 collected.append({"frame": frame_index, "dx": cum_dx, "dy": cum_dy, "da": cum_da,
                                    "sdx": sdx, "sdy": sdy, "sda": sda, "estimated": False})
         else:
-            # If computed on downscaled frame, scale translations back
             scale_inv = 1.0 if scale >= 1.0 else (1.0/scale if scale >= 0.25 else 1.0)
             dx = M[0,2] * scale_inv; dy = M[1,2] * scale_inv
             da = math.atan2(M[1,0], M[0,0])
             cum_dx += dx; cum_dy += dy; cum_da += da
-            # Maintain running sums for O(1) moving averages
             if len(smooth_buf_dx) == smooth_window:
                 sum_dx -= smooth_buf_dx[0]
                 sum_dy -= smooth_buf_dy[0]
@@ -145,7 +193,6 @@ def stabilize_stream(cap, out, smooth_window=DEFAULT_SMOOTH_WINDOW, crop_ratio=D
             sdx = sum_dx / len(smooth_buf_dx)
             sdy = sum_dy / len(smooth_buf_dy)
             sda = sum_da / len(smooth_buf_da)
-            # difference (high frequency component)
             diff_dx = sdx - cum_dx
             diff_dy = sdy - cum_dy
             diff_da = sda - cum_da
@@ -157,18 +204,14 @@ def stabilize_stream(cap, out, smooth_window=DEFAULT_SMOOTH_WINDOW, crop_ratio=D
                 stabilized = stabilized[cy1:cy2, cx1:cx2]
                 stabilized = cv.resize(stabilized, (w, h))
             if overlay:
-                # Track smoothed path for mini-map
                 cam_path.append((sdx, sdy))
             if overlay:
-                # Draw feature correspondences (sample up to 200)
                 if good0 is not None and good1 is not None:
                     for (x2,y2) in good1[:200].reshape(-1,2):
                         cv.circle(stabilized, (int(x2), int(y2)), 2, (0,255,255), -1, cv.LINE_AA)
-                # Draw crop border
                 if do_crop and w > 0 and h > 0:
                     m = int(w * crop_ratio); n = int(h * crop_ratio)
                     cv.rectangle(stabilized, (m,n), (w-m, h-n), (0,200,0), 1, cv.LINE_AA)
-                # Mini camera path panel
                 if len(cam_path) > 2:
                     panel_h, panel_w = 120, 180
                     panel = np.zeros((panel_h, panel_w, 3), dtype=np.uint8)
@@ -185,10 +228,8 @@ def stabilize_stream(cap, out, smooth_window=DEFAULT_SMOOTH_WINDOW, crop_ratio=D
                     for i in range(1, len(pts_panel)):
                         cv.line(panel, pts_panel[i-1], pts_panel[i], (255,255,0), 1, cv.LINE_AA)
                     cv.putText(panel, 'Path', (5,15), cv.FONT_HERSHEY_SIMPLEX, 0.45,(255,255,255),1,cv.LINE_AA)
-                    # Place panel top-left
                     ph, pw = panel.shape[:2]
                     stabilized[5:5+ph, 5:5+pw] = cv.addWeighted(stabilized[5:5+ph, 5:5+pw], 0.4, panel, 0.6, 0)
-                # Text stats
                 cv.putText(stabilized, f"dx:{diff_dx:+.1f} dy:{diff_dy:+.1f}", (10, h-40), cv.FONT_HERSHEY_SIMPLEX, 0.5,(0,200,255),1,cv.LINE_AA)
                 cv.putText(stabilized, f"ang:{math.degrees(diff_da):+.2f} deg", (10, h-20), cv.FONT_HERSHEY_SIMPLEX, 0.5,(0,200,255),1,cv.LINE_AA)
         if out is not None:
@@ -200,17 +241,10 @@ def stabilize_stream(cap, out, smooth_window=DEFAULT_SMOOTH_WINDOW, crop_ratio=D
         prev_gray = gray_full
     return collected if collect_transforms else None
 
-# ---------------- API Endpoints -----------------
 
 @app.route('/stabilize-video', methods=['POST'])
 def stabilize_video():
-    """Upload a video (field name 'video') OR specify ?filename= existing file in ./input.
-    Returns stabilized video unless ?json=1 provided (then returns only transform stats JSON).
-    Query params:
-      window=<int> smoothing window (default 10)
-      crop=<float> border crop ratio (default 0.04)
-      stats=1 to include transform stats (ignored if json=1 which always returns stats)
-    """
+   
     filename_param = request.args.get('filename')
     input_path = None
 
@@ -236,7 +270,6 @@ def stabilize_video():
     height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
     os.makedirs('output', exist_ok=True)
     base = os.path.basename(input_path)
-    # Select container/codec based on requested format with fallbacks
     fmt = (request.args.get('format') or 'mp4').lower()
     if fmt not in ('webm', 'mp4'):
         fmt = 'mp4'
@@ -249,7 +282,6 @@ def stabilize_video():
         mimetype = 'video/mp4'
         codec_candidates = ['avc1', 'H264', 'mp4v']  # try H.264 then fallback to MPEG4
     output_path = os.path.join('output', output_name)
-    # Determine if only JSON is requested to skip file writes
     only_json = request.args.get('json') == '1'
     out = None
     if not only_json:
@@ -262,7 +294,6 @@ def stabilize_video():
                     break
             except Exception:
                 continue
-        # Final fallback: default platform writer
         if out is None:
             fourcc_default = cv.VideoWriter_fourcc(*'mp4v')
             output_path = os.path.join('output', f"stabilized_{base}")
@@ -281,11 +312,10 @@ def stabilize_video():
     except ValueError:
         return jsonify({"error": "Invalid numeric parameter"}), 400
 
-    # Adjust output width if side_by_side
+    ratio_thresh = float(request.args.get('ratio_thresh') or 0.75)
+
     if side_by_side and out is not None:
         out.release()
-        # Recreate writer with same chosen codec and new size
-        # Try to reuse the first successful codec
         recreated = False
         for cc in codec_candidates:
             try:
@@ -310,7 +340,6 @@ def stabilize_video():
         out.release()
 
     if request.args.get('json') == '1':
-        # Persist stats if available
         if stats is not None:
             try:
                 os.makedirs('output', exist_ok=True)
@@ -330,7 +359,6 @@ def stabilize_video():
             "transforms": stats or []
         })
 
-    # Persist stats if requested/available even when returning video
     if stats is not None:
         try:
             with open(os.path.join('output', f'{os.path.splitext(os.path.basename(output_path))[0]}_stats.json'), 'w', encoding='utf-8') as f:
@@ -345,6 +373,7 @@ def stabilize_video():
     resp.headers['X-Overlay'] = '1' if overlay else '0'
     resp.headers['X-SideBySide'] = '1' if side_by_side else '0'
     resp.headers['X-Output-Video'] = os.path.basename(output_path)
+    resp.headers['X-Ratio-Thresh'] = f"{ratio_thresh:.2f}"
     if stats is not None:
         resp.headers['X-Frames'] = str(len(stats))
     return resp
@@ -352,7 +381,6 @@ def stabilize_video():
 
 @app.get('/stats')
 def get_stats():
-    """Return previously persisted stats by output filename: /stats?output=stabilized_<file>.mp4"""
     output_name = request.args.get('output')
     if not output_name:
         return jsonify({"error": "Missing output query parameter"}), 400
@@ -370,7 +398,6 @@ def get_stats():
         "transforms": data if isinstance(data, list) else []
     })
 
-# Remove legacy duplicate route if present
 @app.route('/process-video', methods=['POST'])
 def legacy_endpoint():
     return jsonify({"error": "Deprecated. Use /stabilize-video endpoint.", "use": "/stabilize-video"}), 410

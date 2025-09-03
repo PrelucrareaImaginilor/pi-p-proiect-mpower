@@ -33,6 +33,7 @@ interface Stats {
 	frames: number
 	smooth_window: number
 	crop_ratio: number
+	ratio_thresh: number
 	transforms?: Transform[]
 }
 
@@ -45,6 +46,7 @@ const VideoPage = () => {
 	const [sideBySide, setSideBySide] = useState(false)
 	const [windowSize, setWindowSize] = useState(10)
 	const [cropRatio, setCropRatio] = useState(0.04)
+	const [ratioThresh, setRatioThresh] = useState(0.75)
 	const [stats, setStats] = useState<Stats | null>(null)
 	const [error, setError] = useState<string | null>(null)
 
@@ -62,6 +64,7 @@ const VideoPage = () => {
 				const params = new URLSearchParams()
 				params.set('window', String(windowSize))
 				params.set('crop', String(cropRatio))
+				params.set('ratio', String(ratioThresh))
 				params.set('format', 'mp4')
 				// use faster estimation by default
 				params.set('scale', '0.5')
@@ -69,6 +72,7 @@ const VideoPage = () => {
 				if (sideBySide) params.set('sbs', '1')
 				// also ask server to compute stats alongside video
 				params.set('stats', '1')
+				params.set('ratio_thresh', String(ratioThresh))
 				
 				const videoResp = await fetch('http://127.0.0.1:5000/stabilize-video?' + params.toString(), { method: 'POST', body: formData })
 				
@@ -98,6 +102,7 @@ const VideoPage = () => {
 								frames: statsJson.frames ?? 0,
 								smooth_window: windowSize,
 								crop_ratio: cropRatio,
+								ratio_thresh: ratioThresh,
 								transforms: statsJson.transforms ?? []
 							})
 						}
@@ -237,6 +242,34 @@ const VideoPage = () => {
 							/>
 							<Typography variant="caption" sx={{ color: '#999' }}>
 								Higher values hide more warping edges
+							</Typography>
+						</Grid>
+
+						<Grid item xs={12} sm={6}>
+							<Typography variant="subtitle1" sx={{ mb: 2, color: '#CCC' }}>
+								Ratio Threshold: {(ratioThresh * 100).toFixed(1)}%
+							</Typography>
+							<Slider
+								value={ratioThresh}
+								onChange={(_, value) => setRatioThresh(value as number)}
+								min={0.5}
+								max={0.9}
+								step={0.05}
+								marks={[
+									{ value: 0.5, label: '50%' },
+									{ value: 0.6, label: '60%' },
+									{ value: 0.7, label: '70%' },
+									{ value: 0.8, label: '80%' },
+									{ value: 0.9, label: '90%' }
+								]}
+								sx={{
+									'& .MuiSlider-thumb': { backgroundColor: '#4B3FD7' },
+									'& .MuiSlider-track': { backgroundColor: '#4B3FD7' },
+									'& .MuiSlider-rail': { backgroundColor: 'rgba(255,255,255,0.3)' }
+								}}
+							/>
+							<Typography variant="caption" sx={{ color: '#999' }}>
+								Lower values = more aggressive stabilization
 							</Typography>
 						</Grid>
 					</Grid>

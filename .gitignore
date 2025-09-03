@@ -1,2 +1,8 @@
 /backend/models
 /backend/venv
+/backend/output/*
+/backend/input/*
+.DS_Store
+*.pyc
+venv/
+__pycache__/
